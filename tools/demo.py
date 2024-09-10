@@ -46,10 +46,20 @@ class DemoDataset(DatasetTemplate):
     def __getitem__(self, index):
         if self.ext == '.bin':
             points = np.fromfile(self.sample_file_list[index], dtype=np.float32).reshape(-1, 4)
+            
+            print("bin shape:", points.shape)
+            print("bin data type",points.dtype)
+
         elif self.ext == '.npy':
             points = np.load(self.sample_file_list[index])
+            print("npy shape:", points.shape)
+            print("npy data type",points.dtype)
         else:
             raise NotImplementedError
+        # Print points data
+        print(f"Points data for sample {index}:")
+        print(points)
+
 
         input_dict = {
             'points': points,

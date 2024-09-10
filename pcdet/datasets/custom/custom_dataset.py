@@ -277,7 +277,9 @@ if __name__ == '__main__':
         ROOT_DIR = (Path(__file__).resolve().parent / '../../../').resolve()
         create_custom_infos(
             dataset_cfg=dataset_cfg,
-            class_names=['Vehicle', 'Pedestrian', 'Cyclist'],
+            # class_names=['Vehicle', 'Pedestrian', 'Cyclist'],
+            class_names=['Pedestrian'],
+            # class_names=['vehicle', 'pedestrian'],
             data_path=ROOT_DIR / 'data' / 'custom',
             save_path=ROOT_DIR / 'data' / 'custom',
         )
