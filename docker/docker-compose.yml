@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  openpcdet:
+    image: openpcdet:cuda11
+    build:
+      context: .
+      dockerfile: cu116.Dockerfile
+    container_name: openpcdet-container
+    privileged: true
+    network_mode: "host"
+    ipc: "host"
+    environment:
+      - DISPLAY=${DISPLAY}
+      - SDL_VIDEODRIVER=x11
+    ports:
+      - "8080:8081"
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - /home/firo/Documents/workspace/OpenPCDet:/storage
+      - /weights:/weights
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    command: xfce4-terminal --title=openPCDet
