@@ -17,8 +17,9 @@ services:
       - "8080:8081"
     volumes:
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
-      - /home/firo/Documents/workspace/OpenPCDet:/storage
+      # - /home/firo/Documents/workspace/OpenPCDet:/storage
       - /weights:/weights
+      - /home/$USER/:/home/$USER/
     deploy:
       resources:
         reservations:
