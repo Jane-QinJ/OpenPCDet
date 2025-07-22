@@ -107,7 +107,7 @@ class CustomDataset(DatasetTemplate):
             })
 
         data_dict = self.prepare_data(data_dict=input_dict)
-
+        print("inside method : Input Shape: ", data_dict['points'].shape)
         return data_dict
 
     def evaluation(self, det_annos, class_names, **kwargs):
