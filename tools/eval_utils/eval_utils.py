@@ -39,7 +39,11 @@ def eval_one_epoch(cfg, args, model, dataloader, epoch_id, logger, dist_test=Fal
 
     if getattr(args, 'infer_time', False):
         start_iter = int(len(dataloader) * 0.1)
-        infer_time_meter = common_utils.AverageMeter()
+        infer_time_meter = common_utils.AverageMeter()   # model forward (+postproc in model)
+        load_time_meter  = common_utils.AverageMeter()   # host->GPU copy
+        pp_time_meter    = common_utils.AverageMeter()   # generate_prediction_dicts
+        io_time_meter    = common_utils.AverageMeter()   # load + pp
+        first_batch_size = None
 
     logger.info('*************** EPOCH %s EVALUATION *****************' % epoch_id)
     if dist_test:
@@ -56,28 +60,48 @@ def eval_one_epoch(cfg, args, model, dataloader, epoch_id, logger, dist_test=Fal
         progress_bar = tqdm.tqdm(total=len(dataloader), leave=True, desc='eval', dynamic_ncols=True)
     start_time = time.time()
     for i, batch_dict in enumerate(dataloader):
-        load_data_to_gpu(batch_dict)
-
+        # ----------------- measure load (H2D) -----------------
         if getattr(args, 'infer_time', False):
-            # start_time = time.time()
+            load_start_time = time.time()
+        load_data_to_gpu(batch_dict)
+        if getattr(args, 'infer_time', False):
+            if first_batch_size is None:
+                first_batch_size = int(batch_dict.get('batch_size', 1))
+            torch.cuda.synchronize()
+            load_ms = (time.time() - load_start_time) * 1000.0
+            load_time_meter.update(load_ms)
+
+        # ----------------- model forward -----------------
+        if getattr(args, 'infer_time', False):
+            torch.cuda.synchronize()
             inference_start_time = time.time()
         with torch.no_grad():
             pred_dicts, ret_dict = model(batch_dict)
+        if getattr(args, 'infer_time', False):
+            torch.cuda.synchronize()
+            infer_ms = (time.time() - inference_start_time) * 1000.0
+            infer_time_meter.update(infer_ms)
 
         disp_dict = {}
 
+        # ----------------- post-process dicts -----------------
         if getattr(args, 'infer_time', False):
-            # inference_time = time.time() - start_time
-            inference_time = time.time() - inference_start_time
-            infer_time_meter.update(inference_time * 1000)
-            # use ms to measure inference time
-            disp_dict['infer_time'] = f'{infer_time_meter.val:.2f}({infer_time_meter.avg:.2f})'
-
-        statistics_info(cfg, ret_dict, metric, disp_dict)
+            pp_start_time = time.time()
         annos = dataset.generate_prediction_dicts(
             batch_dict, pred_dicts, class_names,
             output_path=final_output_dir if args.save_to_file else None
         )
+        if getattr(args, 'infer_time', False):
+            # 有些 NMS/后处理在 GPU 上，确保同步
+            torch.cuda.synchronize()
+            pp_ms = (time.time() - pp_start_time) * 1000.0
+            pp_time_meter.update(pp_ms)
+            io_time_meter.update(load_ms + pp_ms)
+            # 进度条同时显示：纯模型时间 和 数据搬运+前后处理时间
+            disp_dict['infer_ms'] = f'{infer_time_meter.val:.2f}({infer_time_meter.avg:.2f})'
+            disp_dict['io_ms']    = f'{(load_ms+pp_ms):.2f}({io_time_meter.avg:.2f})'
+
+        statistics_info(cfg, ret_dict, metric, disp_dict)
         det_annos += annos
         if cfg.LOCAL_RANK == 0:
             progress_bar.set_postfix(disp_dict)
@@ -119,6 +143,18 @@ def eval_one_epoch(cfg, args, model, dataloader, epoch_id, logger, dist_test=Fal
         total_pred_objects += anno['name'].__len__()
     logger.info('Average predicted number of objects(%d samples): %.3f'
                 % (len(det_annos), total_pred_objects / max(1, len(det_annos))))
+    if getattr(args, 'infer_time', False) and first_batch_size:
+        avg_infer_ms = infer_time_meter.avg
+        avg_load_ms  = load_time_meter.avg
+        avg_pp_ms    = pp_time_meter.avg
+        avg_io_ms    = io_time_meter.avg
+        fps_model = first_batch_size / (avg_infer_ms / 1000.0)
+        fps_e2e_model_plus_io = first_batch_size / ((avg_infer_ms + avg_io_ms) / 1000.0)
+        logger.info(f'Model latency (avg): {avg_infer_ms:.2f} ms per batch of {first_batch_size}, FPS(model): {fps_model:.2f}')
+        logger.info(f'Data+Pre/Post latency (avg): load {avg_load_ms:.2f} ms + pp {avg_pp_ms:.2f} ms = {avg_io_ms:.2f} ms per batch')
+        logger.info(f'Combined latency (model + data/pre/post): {(avg_infer_ms + avg_io_ms):.2f} ms per batch, FPS(combined): {fps_e2e_model_plus_io:.2f}')
+        # 也可给出基于 sec_per_example 的端到端（含 dataloader）吞吐：
+        logger.info(f'End-to-end sec_per_example: {sec_per_example*1000:.2f} ms per sample, FPS(e2e): {1.0/sec_per_example:.2f}')
 
     with open(result_dir / 'result.pkl', 'wb') as f:
         pickle.dump(det_annos, f)

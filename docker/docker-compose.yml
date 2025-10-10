@@ -6,7 +6,7 @@ services:
     build:
       context: .
       dockerfile: cu116.Dockerfile
-    container_name: openpcdet-container
+    container_name: openpcdet:container
     privileged: true
     network_mode: "host"
     ipc: "host"
