@@ -3,7 +3,7 @@ DATA_PATH: '../data/custom'
 
 # POINT_CLOUD_RANGE: [0, -20, 0, 40, 20, 4]
 # POINT_CLOUD_RANGE: [-70.4, -40, -1, 70.4, 40, 3]
-POINT_CLOUD_RANGE: [-10, -20, -2, 30, 20, 2]
+POINT_CLOUD_RANGE: [-10, -20, -1, 30, 20, 3]
 
 MAP_CLASS_TO_KITTI: {
     # 'vehicle': 'Car',
