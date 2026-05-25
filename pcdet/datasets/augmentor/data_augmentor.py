@@ -113,6 +113,66 @@ class DataAugmentor(object):
         data_dict['noise_scale'] = noise_scale
         return data_dict
 
+    def random_distance_point_dropout(self, data_dict=None, config=None):
+        if data_dict is None:
+            return partial(self.random_distance_point_dropout, config=config)
+
+        points = data_dict['points']
+        if points.shape[0] == 0:
+            return data_dict
+
+        drop_prob = float(config.get('DROP_PROB', 0.3))
+        distance_range = config.get('DISTANCE_RANGE', [0.0, 80.0])
+        keep_prob_range = config.get('KEEP_PROB_RANGE', [0.35, 0.85])
+
+        if np.random.rand() > drop_prob:
+            return data_dict
+
+        dist = np.linalg.norm(points[:, :2], axis=1)
+        in_range = (dist >= distance_range[0]) & (dist < distance_range[1])
+        keep_prob = np.random.uniform(keep_prob_range[0], keep_prob_range[1])
+        keep_mask = np.ones(points.shape[0], dtype=np.bool_)
+        keep_mask[in_range] = np.random.rand(in_range.sum()) < keep_prob
+
+        data_dict['points'] = points[keep_mask]
+        return data_dict
+
+    def random_object_point_dropout(self, data_dict=None, config=None):
+        if data_dict is None:
+            return partial(self.random_object_point_dropout, config=config)
+
+        gt_boxes = data_dict['gt_boxes']
+        points = data_dict['points']
+        if gt_boxes.shape[0] == 0 or points.shape[0] == 0:
+            return data_dict
+
+        drop_prob = float(config.get('DROP_PROB', 0.5))
+        keep_prob_range = config.get('KEEP_PROB_RANGE', [0.45, 0.85])
+        lower_body_prob = float(config.get('LOWER_BODY_PROB', 0.5))
+
+        keep_mask = np.ones(points.shape[0], dtype=np.bool_)
+        for box in gt_boxes:
+            if np.random.rand() > drop_prob:
+                continue
+            _, obj_mask = augmentor_utils.get_points_in_box(points, box)
+            if obj_mask.sum() == 0:
+                continue
+
+            cur_obj_mask = obj_mask.copy()
+            if np.random.rand() < lower_body_prob:
+                # Simulate rice/grass occlusion by removing points below the box center.
+                cur_obj_mask &= points[:, 2] < box[2]
+
+            obj_indices = np.where(cur_obj_mask)[0]
+            if obj_indices.size == 0:
+                continue
+
+            keep_prob = np.random.uniform(keep_prob_range[0], keep_prob_range[1])
+            keep_mask[obj_indices] &= np.random.rand(obj_indices.size) < keep_prob
+
+        data_dict['points'] = points[keep_mask]
+        return data_dict
+
     def random_image_flip(self, data_dict=None, config=None):
         if data_dict is None:
             return partial(self.random_image_flip, config=config)

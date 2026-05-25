@@ -1,6 +1,7 @@
 import copy
 import pickle
 import os
+from pathlib import Path
 
 import numpy as np
 
@@ -107,7 +108,6 @@ class CustomDataset(DatasetTemplate):
             })
 
         data_dict = self.prepare_data(data_dict=input_dict)
-        print("inside method : Input Shape: ", data_dict['points'].shape)
         return data_dict
 
     def evaluation(self, det_annos, class_names, **kwargs):
@@ -270,16 +270,18 @@ if __name__ == '__main__':
 
     if sys.argv.__len__() > 1 and sys.argv[1] == 'create_custom_infos':
         import yaml
-        from pathlib import Path
         from easydict import EasyDict
 
         dataset_cfg = EasyDict(yaml.safe_load(open(sys.argv[2])))
         ROOT_DIR = (Path(__file__).resolve().parent / '../../../').resolve()
+        data_path = Path(dataset_cfg.DATA_PATH)
+        if not data_path.is_absolute():
+            data_path = (ROOT_DIR / 'tools' / data_path).resolve()
         create_custom_infos(
             dataset_cfg=dataset_cfg,
             # class_names=['Vehicle', 'Pedestrian', 'Cyclist'],
             class_names=['Pedestrian'],
             # class_names=['vehicle', 'pedestrian'],
-            data_path=ROOT_DIR / 'data' / 'custom',
-            save_path=ROOT_DIR / 'data' / 'custom',
+            data_path=data_path,
+            save_path=data_path,
         )
